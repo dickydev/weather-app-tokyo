@@ -3,6 +3,8 @@ const BASE_URL = document.querySelector('meta[name="BASE_URL"]').content;
 let UNITS = "metric";
 const LANG = "id";
 
+// EXPERIMEN
+
 // Konfigurasi Util DOM
 const $ = (s) => document.querySelector(s);
 const statusEl = $("#status");
@@ -45,6 +47,8 @@ const toLocalTime = (unix, tz) => {
     return "-";
   }
 };
+
+/* ============================================================================ */
 
 async function fetchData(url) {
   const response = await fetch(url);
