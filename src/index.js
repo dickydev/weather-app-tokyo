@@ -51,45 +51,93 @@ const toLocalTime = (unix, tz) => {
 /* ============================================================================ */
 
 async function fetchData(url) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.json();
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), 1200);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (res.status === 401) throw new Error("API Key tidak valid (401)");
+    if (res.status === 404) throw new Error("Kota tidak ditemukan (404)");
+    if (res.status === 429)
+      throw new Error("Rate limit (429). Coba lagi nanti");
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  } finally {
+    clearTimeout(to);
+  }
 }
 
 async function getWeather(city) {
   const url = `${BASE_URL}?q=${encodeURIComponent(
     city
-  )}&appid=${API_KEY}&units=${UNITS}`;
+  )}&appid=${API_KEY}&units=${UNITS}&lang=${LANG}`;
   return fetchData(url);
 }
 
-// Fungsi Utama
-(async function main() {
-  console.log("==== Weather App ====");
-  console.log(
-    "Ketik nama Kota untuk melihat cuaca atau exit untuk keluar dari program."
+function renderWeather(data) {
+  const icon = data.weather?.[0]?.icon
+    ? `https://openweathermap.org/img/wn/${data.weather[0].icon}@2x.png`
+    : "";
+
+  $("#wx-icon").src = icon;
+  $("#wx-icon").alt = data.weather?.[0]?.description ?? "ikon cuaca";
+
+  setText("city-name", `${data.name}`);
+  const country = data.sys?.country ?? "";
+  setText("country-line", country === "ID" ? "Indonesia" : country || "-");
+
+  const temp = data.main?.temp ?? "-";
+  $("#temp-now").textContent =
+    UNITS === "imperial" ? `${Math.round(temp)}°F` : `${Math.round(temp)}°C`;
+  setText("desc-line", data.weather?.[0]?.description ?? "-");
+
+  const feels = data.main?.feels_like;
+  const tmin = data.main?.temp_min;
+  const tmax = data.main?.temp_max;
+  const windSpeed = data.wind?.speed;
+  const windDeg = data.wind?.deg ?? 0;
+  const hum = data.main?.humidity;
+  const press = data.main?.pressure;
+  const tz = data.timezone ?? 0;
+
+  setText("feels", fmtUnit(UNITS, feels));
+  setText("range", `${fmtUnit(UNITS, tmin)} - ${fmtUnit(UNITS, tmax)}`);
+  setText(
+    "wind",
+    `${windSpeed ?? "-"} ${
+      UNITS === "imperial" ? "mph" : "m/s"
+    } (${degToCompass(windDeg)})`
   );
-  while (true) {
-    const city = prompt("Kota : ").trim();
-    if (!city || city.toLowerCase() === "exit") break;
+  setText("humid", `${hum ?? "-"}%`);
+  setText("press", `${press ?? "-"} hPa`);
+  setText(
+    "sun",
+    `Terbit ${toLocalTime(data.sys?.sunrise, tz)} 
+    - 
+    Terbenam ${toLocalTime(data.sys?.sunset, tz)}`
+  );
+  show(resultEl);
+}
 
-    try {
-      const data = await getWeather(city);
-      console.log(
-        `Cuaca di ${data.name}, ${
-          data.sys.country === "ID" ? "Indonesia" : "Etc."
-        }`
-      );
-      console.log(
-        `Suhu : ${data.main.temp}°C (Min : ${data.main.temp_min}°C / Max : ${data.main.temp_max}°C)`
-      );
-      console.log(`Kondisi : ${data.weather[0].description}`);
-      console.log(`Angin : ${data.wind.speed} m/s`);
-      console.log(`Kelembapan : ${data.main.humidity}%`);
-    } catch (err) {
-      console.error("Error : " + err.message);
-    }
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  hide(errorEl);
+  show(statusEl);
+  btn.disabled = true;
+  try {
+    const city = inputCity.value.trim();
+    UNITS = unitSel.value;
+    if (!city) throw new Error("Mohon isi nama kota nya....");
+    const data = await getWeather(city);
+    console.log(data);
+    renderWeather(data);
+  } catch (err) {
+    errorEl.textContent = `${err.message}`;
+    show(errorEl);
+  } finally {
+    hide(statusEl);
+    btn.disabled = false;
   }
+});
 
-  console.log("Terimakasih sudah menggunakan Apps nyaa....");
-})();
+inputCity.focus();
